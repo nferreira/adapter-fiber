@@ -25,7 +25,7 @@ var (
 )
 
 type Params map[string]interface{}
-type Handler func(path string, handlers ...f.Handler) f.Router
+type Handler func(path string, handlers ...func(*f.Ctx)) f.Router
 type GetParams func(fiberRule *BindingRule,
 	businessService service.BusinessService,
 	c *f.Ctx) (Params, error)
