@@ -5,7 +5,6 @@ go 1.14
 require (
 	github.com/nferreira/adapter v0.1.0
 	github.com/nferreira/app v0.1.0
-	github.com/gofiber/csrf v0.2.1
-	github.com/gofiber/fiber v1.14.5
-	github.com/gofiber/utils v0.0.10
+	github.com/gofiber/fiber/v2 v2.1.4
+	github.com/gofiber/utils v0.1.2
 )

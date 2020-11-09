@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	f "github.com/gofiber/fiber"
+	f "github.com/gofiber/fiber/v2"
 )
 
 func ToString(value interface{}) (*string, error){

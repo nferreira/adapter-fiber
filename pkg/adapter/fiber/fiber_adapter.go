@@ -3,19 +3,22 @@ package fiber
 import (
 	"context"
 	"errors"
-	f "github.com/gofiber/fiber"
-	"github.com/gofiber/fiber/middleware"
+	f "github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/compress"
+	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/nferreira/adapter/pkg/adapter"
 	"github.com/nferreira/app/pkg/app"
 	"github.com/nferreira/app/pkg/env"
 	"github.com/nferreira/app/pkg/service"
+	"os"
 	"reflect"
 	"strings"
 	"time"
 )
 
 const (
-	Payload       = service.Payload
+	Headers       = service.HeadersField
+	Body          = service.BodyField
 	CorrelationId = "Correlation-Id"
 	AdapterId     = "fiber"
 )
@@ -25,7 +28,7 @@ var (
 )
 
 type Params map[string]interface{}
-type Handler func(path string, handlers ...func(*f.Ctx)) f.Router
+type Handler func(path string, handlers ...f.Handler) f.Router
 type GetParams func(fiberRule *BindingRule,
 	businessService service.BusinessService,
 	c *f.Ctx) (Params, error)
@@ -69,7 +72,7 @@ func (a *Adapter) Start(ctx context.Context) error {
 	default:
 		panic("I need an application to live!!!")
 	}
-	return a.fiberApp.Listen(env.GetInt("FIBER_HTTP_PORT", 8080))
+	return a.fiberApp.Listen(env.GetString("FIBER_HTTP_PORT", ":8080"))
 }
 
 func (a *Adapter) Stop(_ context.Context) error {
@@ -81,7 +84,7 @@ func (a *Adapter) CheckHealth(ctx context.Context) error {
 }
 
 func newFiber() *f.App {
-	fiberApp := f.New(&f.Settings{
+	fiberApp := f.New(f.Config{
 		Concurrency:     env.GetInt("FIBER_CONCURRENCY", 256*1024),
 		ReadTimeout:     env.GetDuration("FIBER_READ_TIMEOUT", time.Duration(3)*time.Minute),
 		WriteTimeout:    env.GetDuration("FIBER_WRITER_TIMEOUT", time.Duration(3)*time.Minute),
@@ -89,10 +92,19 @@ func newFiber() *f.App {
 		WriteBufferSize: env.GetInt("FIBER_WRITE_BUFFER", 4096),
 	})
 
-	fiberApp.Use(middleware.Logger("${time} ${method} ${path} - ${ip} - ${status} - ${latency}\n"))
+	fiberApp.Use(logger.New(logger.Config{
+		Next:         nil,
+		Format:       "[${time}] ${status} - ${latency} ${method} ${path}\n",
+		TimeFormat:   "15:04:05",
+		TimeZone:     "Local",
+		TimeInterval: 500 * time.Millisecond,
+		Output:       os.Stderr,
+	}))
 
 	if env.GetBool("FIBER_USE_COMPRESSION", false) {
-		fiberApp.Use(middleware.Compress(middleware.CompressLevelBestSpeed))
+		fiberApp.Use(compress.New(compress.Config{
+			Level: compress.LevelBestSpeed,
+		}))
 	}
 
 	return fiberApp
@@ -117,9 +129,14 @@ func getPayload(fiberRule *BindingRule, businessService service.BusinessService,
 		return nil, err
 	}
 	serviceRequest := businessService.CreateRequest()
+	headers := make(map[string]string)
+	c.Request().Header.VisitAll(func(key []byte, value []byte) {
+		headers[string(key)] = string(value)
+	})
+	params[Headers] = headers
 	err = c.BodyParser(&serviceRequest)
 	if err == nil {
-		params[Payload] = serviceRequest
+		params[Body] = serviceRequest
 		return params, nil
 	}
 	return nil, ErrBadPayload
@@ -131,7 +148,7 @@ func bind(fiberRule *BindingRule,
 	handler Handler,
 	getParams GetParams) {
 
-	handler(fiberRule.Path, func(c *f.Ctx) {
+	handler(fiberRule.Path, func(c *f.Ctx) error {
 		params, err := getParams(fiberRule, businessService, c)
 		if err != nil {
 			a.handleResult(c,
@@ -140,14 +157,15 @@ func bind(fiberRule *BindingRule,
 					WithError(err).
 					Build(),
 				fiberRule)
-			return
+			return err
 		}
 
 		result, done := a.executeBusinessService(c, businessService, params, fiberRule)
 		if done {
-			return
+			return nil
 		}
 		a.handleResult(c, result, fiberRule)
+		return nil
 	})
 }
 
@@ -162,19 +180,19 @@ func (a *Adapter) executeBusinessService(c *f.Ctx, businessService service.Busin
 		if hashable {
 			status, found := fiberRule.ErrorMapping[result.Error]
 			if found {
-				c.Status(status).Send()
+				_ = c.SendStatus(status)
 			} else {
 				if result.Code == 0 {
-					c.Status(500).Send()
+					_ = c.SendStatus(500)
 				} else {
-					c.Status(result.Code).Send()
+					_ = c.SendStatus(result.Code)
 				}
 			}
 		} else {
 			if result.Code == 0 {
-				c.Status(500).Send()
+				_ = c.SendStatus(500)
 			} else {
-				c.Status(result.Code).Send()
+				_ = c.SendStatus(result.Code)
 			}
 		}
 
@@ -187,34 +205,32 @@ func (a *Adapter) handleResult(c *f.Ctx, result *service.Result, fiberRule *Bind
 	if result.Error != nil {
 		status, found := fiberRule.ErrorMapping[result.Error]
 		if found {
-			c.Status(status).Send()
+			_ = c.SendStatus(status)
 		} else {
-			// TODO, Add a Service Code mapping to Status Code
-			// This need to be done in the rule binding object
 			if result.Code == 0 {
-				c.Status(500).Send()
+				_ = c.SendStatus(500)
 			} else {
-				c.Status(result.Code).Send()
+				_ = c.SendStatus(result.Code)
 			}
 		}
 	} else {
-		if (result.Code == 0) {
-			c.Status(500).Send()
+		if result.Code == 0 {
+			_ = c.SendStatus(500)
 		} else {
 			c.Status(result.Code)
 		}
 		for key, value := range result.Headers {
 			v, err := ToString(value)
 			if err != nil {
-				c.Status(500).Send(err.Error())
+				_ = c.Status(500).SendString(err.Error())
 				return
 			}
 			c.Set(key, *v)
 		}
-		if (result.Response != nil) {
+		if result.Response != nil {
 			err := c.JSON(result.Response)
 			if err != nil {
-				c.Status(500).Send()
+				_ = c.SendStatus(500)
 			}
 		}
 	}

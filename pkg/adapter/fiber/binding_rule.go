@@ -21,7 +21,10 @@ type BindingRule struct {
 	ErrorMapping
 }
 
-func NewBindingRule(method Method, path string, params []string, errorMapping ErrorMapping) adapter.BindingRule {
+func NewBindingRule(method Method,
+	path string,
+	params []string,
+	errorMapping ErrorMapping) adapter.BindingRule {
 	return &BindingRule{
 		Method:       method,
 		Params:       params,
