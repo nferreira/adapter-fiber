@@ -86,8 +86,8 @@ func (a *Adapter) CheckHealth(ctx context.Context) error {
 func newFiber() *f.App {
 	fiberApp := f.New(f.Config{
 		Concurrency:     env.GetInt("FIBER_CONCURRENCY", 256*1024),
-		ReadTimeout:     env.GetDuration("FIBER_READ_TIMEOUT", time.Duration(3)*time.Minute),
-		WriteTimeout:    env.GetDuration("FIBER_WRITER_TIMEOUT", time.Duration(3)*time.Minute),
+		ReadTimeout:     env.GetDuration("FIBER_READ_TIMEOUT", time.Minute, time.Duration(3)*time.Minute),
+		WriteTimeout:    env.GetDuration("FIBER_WRITER_TIMEOUT", time.Minute, time.Duration(3)*time.Minute),
 		ReadBufferSize:  env.GetInt("FIBER_READ_BUFFER", 4096),
 		WriteBufferSize: env.GetInt("FIBER_WRITE_BUFFER", 4096),
 	})
