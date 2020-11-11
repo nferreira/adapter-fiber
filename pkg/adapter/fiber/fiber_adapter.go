@@ -38,7 +38,7 @@ type Adapter struct {
 	fiberApp *f.App
 }
 
-func NewFiberAdapter() adapter.Adapter {
+func New() adapter.Adapter {
 	return &Adapter{
 		app:      nil,
 		fiberApp: newFiber(),
@@ -92,14 +92,21 @@ func newFiber() *f.App {
 		WriteBufferSize: env.GetInt("FIBER_WRITE_BUFFER", 4096),
 	})
 
-	fiberApp.Use(logger.New(logger.Config{
+	loggerMiddleware := logger.New(logger.Config{
 		Next:         nil,
 		Format:       "[${time}] ${status} - ${latency} ${method} ${path}\n",
 		TimeFormat:   "15:04:05",
 		TimeZone:     "Local",
 		TimeInterval: 500 * time.Millisecond,
 		Output:       os.Stderr,
-	}))
+	})
+
+	fiberApp.Use(func(ctx *f.Ctx) error {
+		if ctx.Path() != "/health" {
+			return loggerMiddleware(ctx)
+		}
+		return nil
+	})
 
 	if env.GetBool("FIBER_USE_COMPRESSION", false) {
 		fiberApp.Use(compress.New(compress.Config{
@@ -235,3 +242,4 @@ func (a *Adapter) handleResult(c *f.Ctx, result *service.Result, fiberRule *Bind
 		}
 	}
 }
+
