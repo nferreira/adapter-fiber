@@ -30,8 +30,8 @@ var (
 type Params map[string]interface{}
 type Handler func(path string, handlers ...f.Handler) f.Router
 type GetParams func(fiberRule *BindingRule,
-	businessService service.BusinessService,
-	c *f.Ctx) (Params, error)
+	businessService *service.BusinessService,
+	c *f.Ctx) (*Params, error)
 
 type Adapter struct {
 	app      app.App
@@ -49,17 +49,17 @@ func (a *Adapter) BindRules(rules map[adapter.BindingRule]service.BusinessServic
 	for rule, businessService := range rules {
 		fiberRule := rule.(*BindingRule)
 		if fiberRule.Method == Get {
-			bind(fiberRule, a, businessService, a.fiberApp.Get, getParams)
+			bind(fiberRule, a, &businessService, a.fiberApp.Get, getParams)
 		} else if fiberRule.Method == Post {
-			bind(fiberRule, a, businessService, a.fiberApp.Post, getPayload)
+			bind(fiberRule, a, &businessService, a.fiberApp.Post, getPayload)
 		} else if fiberRule.Method == Put {
-			bind(fiberRule, a, businessService, a.fiberApp.Put, getPayload)
+			bind(fiberRule, a, &businessService, a.fiberApp.Put, getPayload)
 		} else if fiberRule.Method == Patch {
-			bind(fiberRule, a, businessService, a.fiberApp.Patch, getPayload)
+			bind(fiberRule, a, &businessService, a.fiberApp.Patch, getPayload)
 		} else if fiberRule.Method == Delete {
-			bind(fiberRule, a, businessService, a.fiberApp.Delete, getParams)
+			bind(fiberRule, a, &businessService, a.fiberApp.Delete, getParams)
 		} else if fiberRule.Method == Options {
-			bind(fiberRule, a, businessService, a.fiberApp.Options, getParams)
+			bind(fiberRule, a, &businessService, a.fiberApp.Options, getParams)
 		}
 	}
 }
@@ -117,7 +117,7 @@ func newFiber() *f.App {
 	return fiberApp
 }
 
-func getParams(fiberRule *BindingRule, businessService service.BusinessService, c *f.Ctx) (Params, error) {
+func getParams(fiberRule *BindingRule, businessService *service.BusinessService, c *f.Ctx) (*Params, error) {
 	params := make(Params)
 	for _, param := range fiberRule.Params {
 		var value string
@@ -127,23 +127,23 @@ func getParams(fiberRule *BindingRule, businessService service.BusinessService, 
 		}
 		params[param] = value
 	}
-	return params, nil
+	return &params, nil
 }
 
-func getPayload(fiberRule *BindingRule, businessService service.BusinessService, c *f.Ctx) (params Params, err error) {
+func getPayload(fiberRule *BindingRule, businessService *service.BusinessService, c *f.Ctx) (params *Params, err error) {
 	params, err = getParams(fiberRule, businessService, c)
 	if err != nil {
 		return nil, err
 	}
-	serviceRequest := businessService.CreateRequest()
+	serviceRequest := (*businessService).CreateRequest()
 	headers := make(map[string]string)
 	c.Request().Header.VisitAll(func(key []byte, value []byte) {
 		headers[string(key)] = string(value)
 	})
-	params[Headers] = headers
+	(*params)[Headers] = headers
 	err = c.BodyParser(&serviceRequest)
 	if err == nil {
-		params[Body] = serviceRequest
+		(*params)[Body] = serviceRequest
 		return params, nil
 	}
 	return nil, ErrBadPayload
@@ -151,7 +151,7 @@ func getPayload(fiberRule *BindingRule, businessService service.BusinessService,
 
 func bind(fiberRule *BindingRule,
 	a *Adapter,
-	businessService service.BusinessService,
+	businessService *service.BusinessService,
 	handler Handler,
 	getParams GetParams) {
 
@@ -176,11 +176,12 @@ func bind(fiberRule *BindingRule,
 	})
 }
 
-func (a *Adapter) executeBusinessService(c *f.Ctx, businessService service.BusinessService, params Params, fiberRule *BindingRule) (*service.Result, bool) {
+func (a *Adapter) executeBusinessService(c *f.Ctx, businessService *service.BusinessService, params *Params, fiberRule *BindingRule) (*service.Result, bool) {
 	correlationId := GetCorrelationId(c)
 	executionContext := service.NewExecutionContext(correlationId, a.app)
 	ctx := context.WithValue(c.Context(), service.ExecutionContextKey, executionContext)
-	result := businessService.Execute(ctx, service.Params(map[string]interface{}(params)))
+	p := service.Params(map[string]interface{}(*params))
+	result := (*businessService).Execute(ctx, &p)
 	if result.Error != nil {
 		k := reflect.TypeOf(result.Error).Kind()
 		hashable := k < reflect.Array || k == reflect.Ptr || k == reflect.UnsafePointer
