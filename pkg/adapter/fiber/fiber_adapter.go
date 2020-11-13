@@ -3,6 +3,11 @@ package fiber
 import (
 	"context"
 	"errors"
+	"os"
+	"reflect"
+	"strings"
+	"time"
+
 	f "github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/compress"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -10,10 +15,6 @@ import (
 	"github.com/nferreira/app/pkg/app"
 	"github.com/nferreira/app/pkg/env"
 	"github.com/nferreira/app/pkg/service"
-	"os"
-	"reflect"
-	"strings"
-	"time"
 )
 
 const (
@@ -94,7 +95,7 @@ func newFiber() *f.App {
 
 	loggerMiddleware := logger.New(logger.Config{
 		Next:         nil,
-		Format:       "[${time}] ${status} - ${latency} ${method} ${path}\n",
+		Format:       "[${status} - ${latency} ${method} ${path}\n",
 		TimeFormat:   "15:04:05",
 		TimeZone:     "Local",
 		TimeInterval: 500 * time.Millisecond,
@@ -243,4 +244,3 @@ func (a *Adapter) handleResult(c *f.Ctx, result *service.Result, fiberRule *Bind
 		}
 	}
 }
-
