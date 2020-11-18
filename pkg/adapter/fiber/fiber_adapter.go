@@ -237,7 +237,17 @@ func (a *Adapter) handleResult(c *f.Ctx, result *service.Result, fiberRule *Bind
 			c.Set(key, *v)
 		}
 		if result.Response != nil {
-			err := c.JSON(result.Response)
+			var err error
+			switch result.ResponseType {
+			case service.JsonResponse:
+				err = c.JSON(result.Response)
+			case service.HtmlResponse:
+				var html *string
+				html, err = ToString(result.Response)
+				if err == nil {
+					err = c.SendString(*html)
+				}
+			}
 			if err != nil {
 				_ = c.SendStatus(500)
 			}

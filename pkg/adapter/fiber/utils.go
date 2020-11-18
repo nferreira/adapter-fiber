@@ -3,24 +3,31 @@ package fiber
 import (
 	"errors"
 	"fmt"
-	"github.com/gofiber/utils"
 	"strconv"
 	"strings"
+
+	"github.com/gofiber/utils"
 
 	f "github.com/gofiber/fiber/v2"
 )
 
-func ToString(value interface{}) (*string, error){
-	v := ""
-	switch value.(type) {
-	case int: v = strconv.Itoa(value.(int))
-	case float32: v = fmt.Sprintf("%.2f", value.(float32))
-	case float64: v = fmt.Sprintf("%.2f", value.(float64))
-	case string: v = value.(string)
+func ToString(value interface{}) (*string, error) {
+	result := ""
+	switch v := value.(type) {
+	case int:
+		result = strconv.Itoa(v)
+	case float32:
+		result = fmt.Sprintf("%.2f", v)
+	case float64:
+		result = fmt.Sprintf("%.2f", v)
+	case string:
+		result = v
+	case *string:
+		result = *v
 	default:
 		return nil, errors.New("Headers can only be of string type")
 	}
-	return &v, nil
+	return &result, nil
 }
 
 func GetCorrelationId(c *f.Ctx) string {
