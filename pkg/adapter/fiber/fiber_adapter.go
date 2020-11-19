@@ -3,14 +3,12 @@ package fiber
 import (
 	"context"
 	"errors"
-	"os"
 	"reflect"
 	"strings"
 	"time"
 
 	f "github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/compress"
-	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/nferreira/adapter/pkg/adapter"
 	"github.com/nferreira/app/pkg/app"
 	"github.com/nferreira/app/pkg/env"
@@ -31,7 +29,7 @@ var (
 type Params map[string]interface{}
 type Handler func(path string, handlers ...f.Handler) f.Router
 type GetParams func(fiberRule *BindingRule,
-	businessService *service.BusinessService,
+	businessService service.BusinessService,
 	c *f.Ctx) (*Params, error)
 
 type Adapter struct {
@@ -50,17 +48,17 @@ func (a *Adapter) BindRules(rules map[adapter.BindingRule]service.BusinessServic
 	for rule, businessService := range rules {
 		fiberRule := rule.(*BindingRule)
 		if fiberRule.Method == Get {
-			bind(fiberRule, a, &businessService, a.fiberApp.Get, getParams)
+			bind(fiberRule, a, businessService, a.fiberApp.Get, getParams)
 		} else if fiberRule.Method == Post {
-			bind(fiberRule, a, &businessService, a.fiberApp.Post, getPayload)
+			bind(fiberRule, a, businessService, a.fiberApp.Post, getPayload)
 		} else if fiberRule.Method == Put {
-			bind(fiberRule, a, &businessService, a.fiberApp.Put, getPayload)
+			bind(fiberRule, a, businessService, a.fiberApp.Put, getPayload)
 		} else if fiberRule.Method == Patch {
-			bind(fiberRule, a, &businessService, a.fiberApp.Patch, getPayload)
+			bind(fiberRule, a, businessService, a.fiberApp.Patch, getPayload)
 		} else if fiberRule.Method == Delete {
-			bind(fiberRule, a, &businessService, a.fiberApp.Delete, getParams)
+			bind(fiberRule, a, businessService, a.fiberApp.Delete, getParams)
 		} else if fiberRule.Method == Options {
-			bind(fiberRule, a, &businessService, a.fiberApp.Options, getParams)
+			bind(fiberRule, a, businessService, a.fiberApp.Options, getParams)
 		}
 	}
 }
@@ -93,22 +91,6 @@ func newFiber() *f.App {
 		WriteBufferSize: env.GetInt("FIBER_WRITE_BUFFER", 4096),
 	})
 
-	loggerMiddleware := logger.New(logger.Config{
-		Next:         nil,
-		Format:       "[${status} - ${latency} ${method} ${path}\n",
-		TimeFormat:   "15:04:05",
-		TimeZone:     "Local",
-		TimeInterval: 500 * time.Millisecond,
-		Output:       os.Stderr,
-	})
-
-	fiberApp.Use(func(ctx *f.Ctx) error {
-		if ctx.Path() != "/health" {
-			return loggerMiddleware(ctx)
-		}
-		return nil
-	})
-
 	if env.GetBool("FIBER_USE_COMPRESSION", false) {
 		fiberApp.Use(compress.New(compress.Config{
 			Level: compress.LevelBestSpeed,
@@ -118,7 +100,7 @@ func newFiber() *f.App {
 	return fiberApp
 }
 
-func getParams(fiberRule *BindingRule, businessService *service.BusinessService, c *f.Ctx) (*Params, error) {
+func getParams(fiberRule *BindingRule, businessService service.BusinessService, c *f.Ctx) (*Params, error) {
 	params := make(Params)
 	for _, param := range fiberRule.Params {
 		var value string
@@ -131,12 +113,12 @@ func getParams(fiberRule *BindingRule, businessService *service.BusinessService,
 	return &params, nil
 }
 
-func getPayload(fiberRule *BindingRule, businessService *service.BusinessService, c *f.Ctx) (params *Params, err error) {
+func getPayload(fiberRule *BindingRule, businessService service.BusinessService, c *f.Ctx) (params *Params, err error) {
 	params, err = getParams(fiberRule, businessService, c)
 	if err != nil {
 		return nil, err
 	}
-	serviceRequest := (*businessService).CreateRequest()
+	serviceRequest := businessService.CreateRequest()
 	headers := make(map[string]string)
 	c.Request().Header.VisitAll(func(key []byte, value []byte) {
 		headers[string(key)] = string(value)
@@ -152,7 +134,7 @@ func getPayload(fiberRule *BindingRule, businessService *service.BusinessService
 
 func bind(fiberRule *BindingRule,
 	a *Adapter,
-	businessService *service.BusinessService,
+	businessService service.BusinessService,
 	handler Handler,
 	getParams GetParams) {
 
@@ -177,12 +159,12 @@ func bind(fiberRule *BindingRule,
 	})
 }
 
-func (a *Adapter) executeBusinessService(c *f.Ctx, businessService *service.BusinessService, params *Params, fiberRule *BindingRule) (*service.Result, bool) {
+func (a *Adapter) executeBusinessService(c *f.Ctx, businessService service.BusinessService, params *Params, fiberRule *BindingRule) (*service.Result, bool) {
 	correlationId := GetCorrelationId(c)
 	executionContext := service.NewExecutionContext(correlationId, a.app)
 	ctx := context.WithValue(c.Context(), service.ExecutionContextKey, executionContext)
 	p := service.Params(map[string]interface{}(*params))
-	result := (*businessService).Execute(ctx, &p)
+	result := businessService.Execute(ctx, &p)
 	if result.Error != nil {
 		k := reflect.TypeOf(result.Error).Kind()
 		hashable := k < reflect.Array || k == reflect.Ptr || k == reflect.UnsafePointer

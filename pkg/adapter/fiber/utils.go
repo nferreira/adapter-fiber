@@ -3,10 +3,9 @@ package fiber
 import (
 	"errors"
 	"fmt"
+	"github.com/gofiber/utils"
 	"strconv"
 	"strings"
-
-	"github.com/gofiber/utils"
 
 	f "github.com/gofiber/fiber/v2"
 )
